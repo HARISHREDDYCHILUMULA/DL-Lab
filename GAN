@@ -1,0 +1,76 @@
+explain this code:
+```python
+import tensorflow as tf
+from tensorflow import keras
+from keras.models import Sequential
+from keras.layers import Dense, Reshape, Flatten
+import matplotlib.pyplot as plt
+import numpy as np
+```
+
+```python
+z_dim = 20
+
+with np.load('/content/drive/MyDrive/mnist_features.npz',allow_pickle=True) as f:
+    x_train = f['x_train']
+    y_train = f['y_train']
+    x_test = f['x_test']
+    y_test = f['y_test']
+
+x_train = x_train / 255
+x_iter = iter(tf.data.Dataset.from_tensor_slices(x_train).shuffle(10000).batch(100).repeat())
+```
+
+```python
+discriminator = Sequential([
+    Flatten(input_shape=(28, 28)),
+    Dense(units=128, activation='relu'),
+    Dense(units=1)
+])
+
+generator = Sequential([
+    Dense(units=128, activation='relu', input_shape=(z_dim, )),
+    Dense(units=28*28, activation='sigmoid'),
+    Reshape((28, 28))
+])
+```
+
+```python
+cross_entropy = keras.losses.BinaryCrossentropy(from_logits=True)
+
+def g_loss(d, x_fake):
+  return cross_entropy(tf.ones_like(d(x_fake)), 
+                       d(x_fake))
+
+def d_loss(d, x_real, x_fake):
+  return cross_entropy(tf.ones_like(d(x_real)), 
+                       d(x_real)) + cross_entropy(tf.zeros_like(d(x_fake)), 
+                       d(x_fake))
+
+g_opt = keras.optimizers.Adam(1e-4)
+d_opt = keras.optimizers.Adam(1e-4)
+```
+
+```python
+fixed_noise = tf.random.normal([10, z_dim])
+
+for epoch in range(10000):
+  noise = tf.random.normal([100, z_dim])
+  x_real = next(x_iter)
+
+  with tf.GradientTape() as g_tape, tf.GradientTape() as d_tape:
+    x_fake = generator(noise)
+    g_loss_curr = g_loss(discriminator, x_fake)
+    d_loss_curr = d_loss(discriminator, x_real, x_fake)
+
+  g_grad = g_tape.gradient(g_loss_curr, generator.trainable_variables)
+  d_grad = d_tape.gradient(d_loss_curr, discriminator.trainable_variables)
+
+  g_opt.apply_gradients(zip(g_grad, generator.trainable_variables))
+  d_opt.apply_gradients(zip(d_grad, discriminator.trainable_variables))
+
+  if epoch % 1000 == 0:
+    plt.imshow(generator(fixed_noise)[0, :, :] * 255.0)
+    plt.gray()
+    plt.show()
+```
